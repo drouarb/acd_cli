@@ -1,7 +1,7 @@
 import unittest
 import os
 
-from acdcli.cache import db, schema
+from acdcli.cache import db
 from .test_helper import gen_file, gen_folder, gen_bunch_of_nodes
 
 

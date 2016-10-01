@@ -1,30 +1,21 @@
-import configparser
 import logging
-import os
-import re
-import sqlite3
-from threading import local
+import configparser
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from acdcli.utils.conf import get_conf
 
-from .cursors import *
-from .format import FormatterMixin
-from .query import QueryMixin
 from .schema import SchemaMixin
+from .query import QueryMixin
+from .format import FormatterMixin
 from .sync import SyncMixin
+from .templates.nodes import Nodes
+from .keyvaluestorage import KeyValueStorage
 
 logger = logging.getLogger(__name__)
 
-_ROOT_ID_SQL = 'SELECT id FROM nodes WHERE name IS NULL AND type == "folder" ORDER BY created'
-
-
+_DB_DEFAULT = 'nodes.db'
 _SETTINGS_FILENAME = 'cache.ini'
-
-_def_conf = configparser.ConfigParser()
-_def_conf['sqlite'] = dict(filename='nodes.db', busy_timeout=30000, journal_mode='wal')
-_def_conf['blacklist'] = dict(folders= [])
-
-
 
 class IntegrityError(Exception):
     def __init__(self, msg):
@@ -33,100 +24,32 @@ class IntegrityError(Exception):
     def __str__(self):
         return repr(self.msg)
 
-
-def _create_conn(path: str) -> sqlite3.Connection:
-    c = sqlite3.connect(path)
-    c.row_factory = sqlite3.Row # allow dict-like access on rows with col name
-    return c
-
-
-def _regex_match(pattern: str, cell: str) -> bool:
-    if cell is None:
-        return False
-    return re.match(pattern, cell, re.IGNORECASE) is not None
-
-
-class NodeCache(SchemaMixin, QueryMixin, SyncMixin, FormatterMixin):
+class NodeCache(SchemaMixin, QueryMixin, FormatterMixin, SyncMixin):
     IntegrityCheckType = dict(full=0, quick=1, none=2)
-    """types of SQLite integrity checks"""
 
-    def __init__(self, cache_path: str='', settings_path='', check=IntegrityCheckType['full']):
-        self._conf = get_conf(settings_path, _SETTINGS_FILENAME, _def_conf)
-
-        self.db_path = os.path.join(cache_path, self._conf['sqlite']['filename'])
-        self.tl = local()
-
-        self.integrity_check(check)
+    def __init__(self, cache_path: str='', settings_path=''):
+        self.init_config(cache_path, settings_path)
+        self._engine = create_engine(self._conf["database"]["url"])
         self.init()
 
-        self._conn.create_function('REGEXP', _regex_match.__code__.co_argcount, _regex_match)
+        self._DBSession = sessionmaker(bind=self._engine)
+        self._session = self._DBSession()
 
-        with cursor(self._conn) as c:
-            c.execute(_ROOT_ID_SQL)
-            row = c.fetchone()
-            if not row:
-                self.root_id = ''
-                return
-            first_id = row['id']
+        self.KeyValueStorage = KeyValueStorage(self._session)
 
-            if c.fetchone():
-                raise IntegrityError('Could not uniquely identify root node.')
+        self.KeyValueStorage.__setitem__("Hello", "die")
 
-            self.root_id = first_id
-
-        self._execute_pragma('busy_timeout', self._conf['sqlite']['busy_timeout'])
-        self._execute_pragma('journal_mode', self._conf['sqlite']['journal_mode'])
-
-    @property
-    def _conn(self) -> sqlite3.Connection:
-        if not hasattr(self.tl, '_conn'):
-            self.tl._conn = _create_conn(self.db_path)
-        return self.tl._conn
-
-    def _execute_pragma(self, key, value) -> str:
-        with cursor(self._conn) as c:
-            c.execute('PRAGMA %s=%s;' % (key, value))
-            r = c.fetchone()
-        if r:
-            logger.debug('Set %s to %s. Result: %s.' % (key, value, r[0]))
-            return r[0]
-
-    def remove_db_file(self) -> bool:
-        """Removes database file."""
-        self._conn.close()
-
-        import os
-        import random
-        import string
-        import tempfile
-
-        tmp_name = ''.join(random.choice(string.ascii_lowercase) for _ in range(16))
-        tmp_name = os.path.join(tempfile.gettempdir(), tmp_name)
-
-        try:
-            os.rename(self.db_path, tmp_name)
-        except OSError:
-            logger.critical('Error renaming/removing database file "%s".' % self.db_path)
-            return False
+        rootNodes = self._session.query(Nodes).filter(Nodes.name == None).all()
+        if len(rootNodes) > 1:
+            raise IntegrityError('Could not uniquely identify root node.')
+        elif len(rootNodes) == 0:
+            self.root_id = ''
         else:
-            try:
-                os.remove(tmp_name)
-            except OSError:
-                logger.info('Database file was moved, but not deleted.')
-        return True
+            self.root_id = rootNodes[0].id
 
-    def integrity_check(self, type_: IntegrityCheckType):
-        """Performs a `self-integrity check
-        <https://www.sqlite.org/pragma.html#pragma_integrity_check>`_ on the database."""
+    def init_config(self, cache_path, settings_path):
+        _def_conf = configparser.ConfigParser()
+        _def_conf['database'] = dict(url='sqlite:///' + cache_path + '/' + _DB_DEFAULT)
+        _def_conf['blacklist'] = dict(folders=[])
 
-        with cursor(self._conn) as c:
-            if type_ == NodeCache.IntegrityCheckType['full']:
-                r = c.execute('PRAGMA integrity_check;')
-            elif type_ == NodeCache.IntegrityCheckType['quick']:
-                r = c.execute('PRAGMA quick_check;')
-            else:
-                return
-            r = c.fetchone()
-            if not r or r[0] != 'ok':
-                logger.warn('Sqlite database integrity check failed. '
-                            'You may need to clear the cache if you encounter any errors.')
+        self._conf = get_conf(settings_path, _SETTINGS_FILENAME, _def_conf)

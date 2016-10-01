@@ -1579,7 +1579,7 @@ def main():
 
     if args.func not in nocache_actions:
         try:
-            cache = db.NodeCache(CACHE_PATH, SETTINGS_PATH, args.check)
+            cache = db.NodeCache(CACHE_PATH, SETTINGS_PATH)
         except:
             raise
             sys.exit(INIT_FAILED_RETVAL)

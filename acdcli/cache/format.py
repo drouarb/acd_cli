@@ -7,7 +7,7 @@ import os
 import sys
 import datetime
 
-from .cursors import cursor
+from .templates.nodes import Status
 
 try:
     colors = filter(None, os.environ.get('LS_COLORS', '').split(':'))
@@ -36,7 +36,7 @@ def init(color=ColorMode['auto']):
         global get_adfixes, color_path, color_status, seq_tpl, nor_fmt
         get_adfixes = lambda _: ('', '')
         color_path = lambda x: x
-        color_status = lambda x: x[0]
+        color_status = lambda x: x.value[0]
         seq_tpl = '%s'
         nor_fmt = '%s'
 
@@ -64,11 +64,11 @@ def color_path(path: str) -> str:
 
 def color_status(status):
     """Creates a colored one-character status abbreviation."""
-    if status == 'AVAILABLE':
-        return seq_tpl % '32' + status[0] + res  # green
-    elif status == 'TRASH':
-        return seq_tpl % '31' + status[0] + res  # red
-    return status[0]
+    if status == Status.AVAILABLE:
+        return seq_tpl % '32' + status.value[0] + res  # green
+    elif status == Status.TRASH:
+        return seq_tpl % '31' + status.value[0] + res  # red
+    return status.value[0]
 
 
 def date_str(time_: datetime.datetime) -> str:

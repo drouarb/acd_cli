@@ -1,17 +1,17 @@
-"""
-Syncs Amazon Node API objects with SQLite database.
-"""
-
 import logging
-from datetime import datetime
 from itertools import islice
-from .cursors import mod_cursor
+
+from datetime import datetime
 import dateutil.parser as iso_date
+
+from .templates.nodes import Nodes, Status
+from .templates.files import Files
+from .templates.parentage import Parentage
+from .templates.labels import Labels
 
 logger = logging.getLogger(__name__)
 
 
-# prevent sqlite3 from throwing too many arguments errors (#145)
 def gen_slice(list_, length=100):
     it = iter(list_)
     while True:
@@ -21,35 +21,39 @@ def gen_slice(list_, length=100):
         yield slice_
 
 
-def placeholders(args):
-    return '(%s)' % ','.join('?' * len(args))
-
-
 class SyncMixin(object):
-    """Sync mixin to the :class:`NodeCache <acdcli.cache.db.NodeCache>`"""
-
     def remove_purged(self, purged: list):
-        """Removes purged nodes from database
-
-        :param purged: list of purged node IDs"""
-
         if not purged:
             return
 
         for slice_ in gen_slice(purged):
-            with mod_cursor(self._conn) as c:
-                c.execute('DELETE FROM nodes WHERE id IN %s' % placeholders(slice_), slice_)
-                c.execute('DELETE FROM files WHERE id IN %s' % placeholders(slice_), slice_)
-                c.execute('DELETE FROM parentage WHERE parent IN %s' % placeholders(slice_), slice_)
-                c.execute('DELETE FROM parentage WHERE child IN %s' % placeholders(slice_), slice_)
-                c.execute('DELETE FROM labels WHERE id IN %s' % placeholders(slice_), slice_)
+            self._session.query(Nodes) \
+                .filter(Nodes.id.in_(slice_)) \
+                .delete(synchronize_session=False)
 
+            self._session.query(Files) \
+                .filter(Files.id.in_(slice_)) \
+                .delete(synchronize_session=False)
+
+            self._session.query(Parentage) \
+                .filter(Parentage.parent.in_(slice_)) \
+                .delete(synchronize_session=False)
+
+            self._session.query(Parentage) \
+                .filter(Parentage.child.in_(slice_)) \
+                .delete(synchronize_session=False)
+
+            self._session.query(Labels) \
+                .filter(Labels.id.in_(slice_)) \
+                .delete(synchronize_session=False)
+
+        self._session.commit()
         logger.info('Purged %i node(s).' % len(purged))
 
     def insert_nodes(self, nodes: list, partial=True):
-        """Inserts mixed list of files and folders into cache."""
         files = []
         folders = []
+
         for node in nodes:
             if node['status'] == 'PENDING':
                 continue
@@ -61,11 +65,9 @@ class SyncMixin(object):
                 files.append(node)
             elif kind == 'FOLDER':
                 if (not 'name' in node or not node['name']) \
-                and (not 'isRoot' in node or not node['isRoot']):
-                    logger.warning('Skipping non-root folder %s because its name is empty.'
-                                   % node['id'])
+                        and (not 'isRoot' in node or not node['isRoot']):
+                    logger.warning('Skipping non-root folder %s because its name is empty.' % node['id'])
                     continue
-                folders.append(node)
             elif kind != 'ASSET':
                 logger.warning('Cannot insert unknown node type "%s".' % kind)
         self.insert_folders(folders)
@@ -74,57 +76,54 @@ class SyncMixin(object):
         self.insert_parentage(files + folders, partial)
 
     def insert_node(self, node: dict):
-        """Inserts single file or folder into cache."""
         if not node:
             return
         self.insert_nodes([node])
 
     def insert_folders(self, folders: list):
-        """ Inserts list of folders into cache. Sets 'update' column to current date.
-
-        :param folders: list of raw dict-type folders"""
-
         if not folders:
             return
 
-        with mod_cursor(self._conn) as c:
-            for f in folders:
-                c.execute(
-                    'INSERT OR REPLACE INTO nodes '
-                    '(id, type, name, description, created, modified, updated, status) '
-                    'VALUES (?, "folder", ?, ?, ?, ?, ?, ?)',
-                    [f['id'], f.get('name'), f.get('description'),
-                     iso_date.parse(f['createdDate']), iso_date.parse(f['modifiedDate']),
-                     datetime.utcnow(),
-                     f['status']
-                     ]
-                )
+        for f in folders:
+            self._session.merge(
+                Nodes(
+                    id=f['id'],
+                    type="folder",
+                    name=f.get('name'),
+                    description=f.get('description'),
+                    created=iso_date.parse(f['createdDate']),
+                    modified=iso_date.parse(f['modifiedDate']),
+                    updated=datetime.utcnow(),
+                    status=Status(f['status'])
+                ))
 
+        self._session.commit()
         logger.info('Inserted/updated %d folder(s).' % len(folders))
 
     def insert_files(self, files: list):
         if not files:
             return
 
-        with mod_cursor(self._conn) as c:
-            for f in files:
-                c.execute('INSERT OR REPLACE INTO nodes '
-                          '(id, type, name, description, created, modified, updated, status)'
-                          'VALUES (?, "file", ?, ?, ?, ?, ?, ?)',
-                          [f['id'], f.get('name'), f.get('description'),
-                           iso_date.parse(f['createdDate']), iso_date.parse(f['modifiedDate']),
-                           datetime.utcnow(),
-                           f['status']
-                           ]
-                          )
-                c.execute('INSERT OR REPLACE INTO files (id, md5, size) VALUES (?, ?, ?)',
-                          [f['id'],
-                           f.get('contentProperties', {}).get('md5',
-                                                              'd41d8cd98f00b204e9800998ecf8427e'),
-                           f.get('contentProperties', {}).get('size', 0)
-                           ]
-                          )
+        for f in files:
+            self._session.merge(
+                Nodes(
+                    id=f['id'],
+                    type="file",
+                    name=f.get('name'),
+                    description=f.get('description'),
+                    created=iso_date.parse(f['createdDate']),
+                    modified=iso_date.parse(f['modifiedDate']),
+                    updated=datetime.utcnow(),
+                    status=(Status(f['status']))
+                ))
+            self._session.merge(
+                Files(
+                    id=f['id'],
+                    md5=f.get('contentProperties', {}).get('md5', 'd41d8cd98f00b204e9800998ecf8427e'),
+                    size=f.get('contentProperties', {}).get('size', 0)
+                ))
 
+        self._session.commit()
         logger.info('Inserted/updated %d file(s).' % len(files))
 
     def insert_parentage(self, nodes: list, partial=True):
@@ -132,14 +131,19 @@ class SyncMixin(object):
             return
 
         if partial:
-            with mod_cursor(self._conn) as c:
-                for slice_ in gen_slice(nodes):
-                    c.execute('DELETE FROM parentage WHERE child IN %s' % placeholders(slice_),
-                              [n['id'] for n in slice_])
+            for slice_ in gen_slice(nodes):
+                self._session.query(Parentage) \
+                    .filter(Parentage.child.in_([n['id'] for n in slice_])) \
+                    .delete(synchronize_session=False)
 
-        with mod_cursor(self._conn) as c:
-            for n in nodes:
-                for p in n['parents']:
-                    c.execute('INSERT OR IGNORE INTO parentage VALUES (?, ?)', [p, n['id']])
+            self._session.commit()
 
+        for n in nodes:
+            for p in n['parents']:
+                self._session.merge(Parentage(
+                    parent=p,
+                    child=n['id']
+                ))
+
+        self._session.commit()
         logger.info('Parented %d node(s).' % len(nodes))
