@@ -9,7 +9,15 @@ from .templates.parentage import Parentage
 
 class QueryMixin(object):
     def get_node(self, id) -> 'Union[Nodes|None]':
-        return self._session.query(Nodes).filter(Nodes.id == id)
+        result = self._session.query(Nodes).filter(Nodes.id == id).first()
+        return self.resolve_files_properties(result)
+
+    def resolve_files_properties(self, node):
+        if node.is_file:
+            file = self._session.query(Files).filter(Files.id == node.id).first()
+            node.md5 = file.md5
+            node.size = file.size
+        return node
 
     def get_root_node(self):
         return self.get_node(self.root_id)
@@ -40,11 +48,7 @@ class QueryMixin(object):
                 if not trash:
                     return
             if i + 1 == segments.__len__():
-                if result.is_file:
-                    result.size = self._session.query(Files.size) \
-                        .filter(Files.id == result.id) \
-                        .scalar()
-                return result
+                return self.resolve_files_properties(result)
             if result.is_folder:
                 parent = result.id
             else:
