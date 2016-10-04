@@ -40,6 +40,10 @@ class QueryMixin(object):
                 if not trash:
                     return
             if i + 1 == segments.__len__():
+                if result.is_file:
+                    result.size = self._session.query(Files.size) \
+                        .filter(Files.id == result.id) \
+                        .scalar()
                 return result
             if result.is_folder:
                 parent = result.id
