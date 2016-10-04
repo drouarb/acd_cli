@@ -56,7 +56,7 @@ class QueryMixin(object):
             .filter(Parentage.parent == folder_id) \
             .filter(Nodes.status == Status.AVAILABLE) \
             .all()
-        return list(list(zip(*names))[0])
+        return [name[0] for name in names]
 
     def get_node_count(self) -> int:
         return self._session.query(func.count(Nodes.id)).scalar()
