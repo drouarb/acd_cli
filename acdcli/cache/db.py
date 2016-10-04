@@ -37,8 +37,6 @@ class NodeCache(SchemaMixin, QueryMixin, FormatterMixin, SyncMixin):
 
         self.KeyValueStorage = KeyValueStorage(self._session)
 
-        self.KeyValueStorage.__setitem__("Hello", "die")
-
         rootNodes = self._session.query(Nodes).filter(Nodes.name == None).all()
         if len(rootNodes) > 1:
             raise IntegrityError('Could not uniquely identify root node.')

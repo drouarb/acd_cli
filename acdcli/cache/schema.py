@@ -12,4 +12,5 @@ class SchemaMixin(object):
         base.Base.metadata.create_all(self._engine, checkfirst=True)
 
     def drop_all(self):
+        self._session.commit()
         base.Base.metadata.drop_all(self._engine)

@@ -5,4 +5,4 @@ from .base import Base
 class Metadata(Base):
     __tablename__ = 'metadata'
     key = Column(String(64), primary_key=True, nullable=False)
-    value = Column(String())
+    value = Column(String(255))
