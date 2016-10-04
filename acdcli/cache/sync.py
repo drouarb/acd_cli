@@ -68,6 +68,7 @@ class SyncMixin(object):
                         and (not 'isRoot' in node or not node['isRoot']):
                     logger.warning('Skipping non-root folder %s because its name is empty.' % node['id'])
                     continue
+                folders.append(node)
             elif kind != 'ASSET':
                 logger.warning('Cannot insert unknown node type "%s".' % kind)
         self.insert_folders(folders)
