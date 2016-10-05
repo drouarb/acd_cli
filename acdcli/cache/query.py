@@ -13,7 +13,7 @@ class QueryMixin(object):
         return self.resolve_files_properties(result)
 
     def resolve_files_properties(self, node):
-        if node.is_file:
+        if node is not None and node.is_file:
             file = self._session.query(Files).filter(Files.id == node.id).first()
             node.md5 = file.md5
             node.size = file.size
@@ -72,7 +72,8 @@ class QueryMixin(object):
         return self._session.query(func.count(Nodes.id)).filter(Nodes.type == "folder").scalar()
 
     def calculate_usage(self):
-        return self._session.query(func.sum(Files.size)).scalar()
+        usage = self._session.query(func.sum(Files.size)).scalar()
+        return 0 if usage is None else usage
 
     def num_children(self, folder_id) -> int:
         return self._session.query(func.count(Nodes.name)) \
@@ -82,8 +83,8 @@ class QueryMixin(object):
             .scalar()
 
     def num_parents(self, node_id) -> int:
-        return self._session.query(func.count(Nodes.name)) \
-            .join(Parentage, Parentage.parent == Nodes.id) \
+        return self._session.query(func.count(Parentage.parent)) \
+            .join(Nodes, Nodes.id == Parentage.parent) \
             .filter(Parentage.child == node_id) \
             .filter(Nodes.status == Status.AVAILABLE) \
             .scalar()

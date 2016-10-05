@@ -1,3 +1,4 @@
+import os
 import logging
 
 from .templates import *
@@ -14,3 +15,17 @@ class SchemaMixin(object):
     def drop_all(self):
         self._session.commit()
         base.Base.metadata.drop_all(self._engine)
+        return True
+
+    def remove_db_file(self):
+        if self._conf["database"]["url"].startswith("sqlite://"):
+            try:
+                os.remove(self._conf["database"]["url"][9:])
+                logger.info('Database removed.')
+            except OSError:
+                logger.info('Database file was not deleted.')
+                return False
+        else:
+            logger.info('''Database is not sqlite, can't remove db file, droping all tables.''')
+            self.drop_all()
+        return True
