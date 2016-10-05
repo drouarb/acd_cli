@@ -85,46 +85,42 @@ class SyncMixin(object):
         if not folders:
             return
 
-        for f in folders:
-            self._session.merge(
-                Nodes(
-                    id=f['id'],
-                    type="folder",
-                    name=f.get('name'),
-                    description=f.get('description'),
-                    created=iso_date.parse(f['createdDate']),
-                    modified=iso_date.parse(f['modifiedDate']),
-                    updated=datetime.utcnow(),
-                    status=Status(f['status'])
-                ))
-
-        self._session.commit()
+        self._engine.execute(Nodes.__table__.insert(), [
+            {
+                "id": f['id'],
+                "type": "folder",
+                "name": f.get('name'),
+                "description": f.get('description'),
+                "created": iso_date.parse(f['createdDate']),
+                "modified": iso_date.parse(f['modifiedDate']),
+                "updated": datetime.utcnow(),
+                "status": Status(f['status'])
+            } for f in folders])
         logger.info('Inserted/updated %d folder(s).' % len(folders))
 
     def insert_files(self, files: list):
         if not files:
             return
 
-        for f in files:
-            self._session.merge(
-                Nodes(
-                    id=f['id'],
-                    type="file",
-                    name=f.get('name'),
-                    description=f.get('description'),
-                    created=iso_date.parse(f['createdDate']),
-                    modified=iso_date.parse(f['modifiedDate']),
-                    updated=datetime.utcnow(),
-                    status=(Status(f['status']))
-                ))
-            self._session.merge(
-                Files(
-                    id=f['id'],
-                    md5=f.get('contentProperties', {}).get('md5', 'd41d8cd98f00b204e9800998ecf8427e'),
-                    size=f.get('contentProperties', {}).get('size', 0)
-                ))
+        self._engine.execute(Nodes.__table__.insert(), [
+            {
+                "id": f["id"],
+                "type": "file",
+                "name": f.get('name'),
+                "description": f.get('description'),
+                "created": iso_date.parse(f['createdDate']),
+                "modified": iso_date.parse(f['modifiedDate']),
+                "updated": datetime.utcnow(),
+                "status": Status(f['status'])
+            } for f in files])
 
-        self._session.commit()
+        self._engine.execute(Files.__table__.insert(), [
+            {
+                "id": f['id'],
+                "md5": f.get('contentProperties', {}).get('md5', 'd41d8cd98f00b204e9800998ecf8427e'),
+                "size": f.get('contentProperties', {}).get('size', 0)
+            } for f in files])
+
         logger.info('Inserted/updated %d file(s).' % len(files))
 
     def insert_parentage(self, nodes: list, partial=True):
@@ -139,12 +135,11 @@ class SyncMixin(object):
 
             self._session.commit()
 
-        for n in nodes:
-            for p in n['parents']:
-                self._session.merge(Parentage(
-                    parent=p,
-                    child=n['id']
-                ))
+        req = [{
+            "parent": p,
+            "child": n['id']
+        } for n in nodes for p in n['parents']]
+        if len(req) > 0:
+            self._engine.execute(Parentage.__table__.insert(), req)
 
-        self._session.commit()
         logger.info('Parented %d node(s).' % len(nodes))
