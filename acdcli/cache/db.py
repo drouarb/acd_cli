@@ -1,6 +1,7 @@
 import logging
 import configparser
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from acdcli.utils.conf import get_conf
@@ -29,7 +30,12 @@ class NodeCache(SchemaMixin, QueryMixin, FormatterMixin, SyncMixin):
 
     def __init__(self, cache_path: str='', settings_path=''):
         self.init_config(cache_path, settings_path)
-        self._engine = create_engine(self._conf["database"]["url"])
+        if self._conf["database"]["url"].startswith("sqlite"):
+            self._engine = create_engine(self._conf["database"]["url"],
+                                        connect_args={'check_same_thread': False},
+                                        poolclass=StaticPool)
+        else:
+            self._engine = create_engine(self._conf["database"]["url"])
         self.init()
 
         self._DBSession = sessionmaker(bind=self._engine)
