@@ -40,7 +40,9 @@ class QueryMixin(object):
             result = self._session.query(Nodes) \
                 .join(Parentage, Parentage.child == Nodes.id) \
                 .filter(Parentage.parent == parent) \
-                .filter(Nodes.name == segment).first()
+                .filter(Nodes.name == segment) \
+                .order_by(Nodes.status) \
+                .first()
 
             if not result:
                 return
