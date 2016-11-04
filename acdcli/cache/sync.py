@@ -85,6 +85,10 @@ class SyncMixin(object):
         if not folders:
             return
 
+        for i in range(0, len(folders), 500):
+            c = folders[i:i + 500]
+            self._session.execute(Nodes.__table__.delete().where(Nodes.id.in_([f["id"] for f in c])))
+
         self._engine.execute(Nodes.__table__.insert(), [
             {
                 "id": f['id'],
@@ -101,6 +105,11 @@ class SyncMixin(object):
     def insert_files(self, files: list):
         if not files:
             return
+
+        for i in range(0, len(files), 500):
+            c = files[i:i + 500]
+            self._session.execute(Nodes.__table__.delete().where(Nodes.id.in_([f["id"] for f in c])))
+            self._session.execute(Files.__table__.delete().where(Files.id.in_([f["id"] for f in c])))
 
         self._engine.execute(Nodes.__table__.insert(), [
             {
