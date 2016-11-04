@@ -85,21 +85,34 @@ class SyncMixin(object):
         if not folders:
             return
 
-        for i in range(0, len(folders), 500):
-            c = folders[i:i + 500]
-            self._session.execute(Nodes.__table__.delete().where(Nodes.id.in_([f["id"] for f in c])))
+        for i in range(0, len(folders), 900):
+            c = folders[i:i + 900]
+            update = [id[0] for id in self._session.query(Nodes.id).filter(Nodes.id.in_([f["id"] for f in c])).all()]
 
-            self._engine.execute(Nodes.__table__.insert(), [
-                {
-                    "id": f['id'],
-                    "type": "folder",
-                    "name": f.get('name'),
-                    "description": f.get('description'),
-                    "created": iso_date.parse(f['createdDate']),
-                    "modified": iso_date.parse(f['modifiedDate']),
-                    "updated": datetime.utcnow(),
-                    "status": Status(f['status'])
-                } for f in c])
+            if len(update) > 0:
+                self._engine.execute(Nodes.__table__.update().where(Nodes.id.in_(update)), [
+                    {
+                        "type": "folder",
+                        "name": f.get('name'),
+                        "description": f.get('description'),
+                        "created": iso_date.parse(f['createdDate']),
+                        "modified": iso_date.parse(f['modifiedDate']),
+                        "updated": datetime.utcnow(),
+                        "status": Status(f['status'])
+                    } for f in c if f['id'] in update])
+
+            if len(update) < len(c):
+                self._engine.execute(Nodes.__table__.insert(), [
+                    {
+                        "id": f['id'],
+                        "type": "folder",
+                        "name": f.get('name'),
+                        "description": f.get('description'),
+                        "created": iso_date.parse(f['createdDate']),
+                        "modified": iso_date.parse(f['modifiedDate']),
+                        "updated": datetime.utcnow(),
+                        "status": Status(f['status'])
+                    } for f in c if f['id'] not in update])
 
         logger.info('Inserted/updated %d folder(s).' % len(folders))
 
@@ -107,22 +120,35 @@ class SyncMixin(object):
         if not files:
             return
 
-        for i in range(0, len(files), 500):
-            c = files[i:i + 500]
-            self._session.execute(Nodes.__table__.delete().where(Nodes.id.in_([f["id"] for f in c])))
+        for i in range(0, len(files), 900):
+            c = files[i:i + 900]
             self._session.execute(Files.__table__.delete().where(Files.id.in_([f["id"] for f in c])))
+            update = [id[0] for id in self._session.query(Nodes.id).filter(Nodes.id.in_([f["id"] for f in c])).all()]
 
-            self._engine.execute(Nodes.__table__.insert(), [
-                {
-                    "id": f["id"],
-                    "type": "file",
-                    "name": f.get('name'),
-                    "description": f.get('description'),
-                    "created": iso_date.parse(f['createdDate']),
-                    "modified": iso_date.parse(f['modifiedDate']),
-                    "updated": datetime.utcnow(),
-                    "status": Status(f['status'])
-                } for f in c])
+            if len(update) > 0:
+                self._engine.execute(Nodes.__table__.update().where(Nodes.id.in_(update)), [
+                    {
+                        "type": "file",
+                        "name": f.get('name'),
+                        "description": f.get('description'),
+                        "created": iso_date.parse(f['createdDate']),
+                        "modified": iso_date.parse(f['modifiedDate']),
+                        "updated": datetime.utcnow(),
+                        "status": Status(f['status'])
+                    } for f in c if f['id'] in update])
+
+            if len(update) < len(c):
+                self._engine.execute(Nodes.__table__.insert(), [
+                    {
+                        "id": f["id"],
+                        "type": "file",
+                        "name": f.get('name'),
+                        "description": f.get('description'),
+                        "created": iso_date.parse(f['createdDate']),
+                        "modified": iso_date.parse(f['modifiedDate']),
+                        "updated": datetime.utcnow(),
+                        "status": Status(f['status'])
+                    } for f in c if f['id'] not in update])
 
             self._engine.execute(Files.__table__.insert(), [
                 {
