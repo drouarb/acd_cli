@@ -89,17 +89,18 @@ class SyncMixin(object):
             c = folders[i:i + 500]
             self._session.execute(Nodes.__table__.delete().where(Nodes.id.in_([f["id"] for f in c])))
 
-        self._engine.execute(Nodes.__table__.insert(), [
-            {
-                "id": f['id'],
-                "type": "folder",
-                "name": f.get('name'),
-                "description": f.get('description'),
-                "created": iso_date.parse(f['createdDate']),
-                "modified": iso_date.parse(f['modifiedDate']),
-                "updated": datetime.utcnow(),
-                "status": Status(f['status'])
-            } for f in folders])
+            self._engine.execute(Nodes.__table__.insert(), [
+                {
+                    "id": f['id'],
+                    "type": "folder",
+                    "name": f.get('name'),
+                    "description": f.get('description'),
+                    "created": iso_date.parse(f['createdDate']),
+                    "modified": iso_date.parse(f['modifiedDate']),
+                    "updated": datetime.utcnow(),
+                    "status": Status(f['status'])
+                } for f in c])
+
         logger.info('Inserted/updated %d folder(s).' % len(folders))
 
     def insert_files(self, files: list):
@@ -111,24 +112,24 @@ class SyncMixin(object):
             self._session.execute(Nodes.__table__.delete().where(Nodes.id.in_([f["id"] for f in c])))
             self._session.execute(Files.__table__.delete().where(Files.id.in_([f["id"] for f in c])))
 
-        self._engine.execute(Nodes.__table__.insert(), [
-            {
-                "id": f["id"],
-                "type": "file",
-                "name": f.get('name'),
-                "description": f.get('description'),
-                "created": iso_date.parse(f['createdDate']),
-                "modified": iso_date.parse(f['modifiedDate']),
-                "updated": datetime.utcnow(),
-                "status": Status(f['status'])
-            } for f in files])
+            self._engine.execute(Nodes.__table__.insert(), [
+                {
+                    "id": f["id"],
+                    "type": "file",
+                    "name": f.get('name'),
+                    "description": f.get('description'),
+                    "created": iso_date.parse(f['createdDate']),
+                    "modified": iso_date.parse(f['modifiedDate']),
+                    "updated": datetime.utcnow(),
+                    "status": Status(f['status'])
+                } for f in c])
 
-        self._engine.execute(Files.__table__.insert(), [
-            {
-                "id": f['id'],
-                "md5": f.get('contentProperties', {}).get('md5', 'd41d8cd98f00b204e9800998ecf8427e'),
-                "size": f.get('contentProperties', {}).get('size', 0)
-            } for f in files])
+            self._engine.execute(Files.__table__.insert(), [
+                {
+                    "id": f['id'],
+                    "md5": f.get('contentProperties', {}).get('md5', 'd41d8cd98f00b204e9800998ecf8427e'),
+                    "size": f.get('contentProperties', {}).get('size', 0)
+                } for f in c])
 
         logger.info('Inserted/updated %d file(s).' % len(files))
 
