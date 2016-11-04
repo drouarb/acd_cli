@@ -35,7 +35,7 @@ class NodeCache(SchemaMixin, QueryMixin, FormatterMixin, SyncMixin):
                                         connect_args={'check_same_thread': False},
                                         poolclass=StaticPool)
         else:
-            self._engine = create_engine(self._conf["database"]["url"])
+            self._engine = create_engine(self._conf["database"]["url"], poolclass=StaticPool)
         self.init()
 
         self._DBSession = sessionmaker(bind=self._engine)
