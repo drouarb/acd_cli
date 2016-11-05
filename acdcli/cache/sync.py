@@ -3,6 +3,7 @@ from itertools import islice
 
 from datetime import datetime
 import dateutil.parser as iso_date
+from sqlalchemy import bindparam
 
 from .templates.nodes import Nodes, Status
 from .templates.files import Files
@@ -90,7 +91,7 @@ class SyncMixin(object):
             update = [id[0] for id in self._session.query(Nodes.id).filter(Nodes.id.in_([f["id"] for f in c])).all()]
 
             if len(update) > 0:
-                self._engine.execute(Nodes.__table__.update().where(Nodes.id.in_(update)), [
+                self._engine.execute(Nodes.__table__.update().where(Nodes.id == bindparam("where_id")), [
                     {
                         "type": "folder",
                         "name": f.get('name'),
@@ -98,7 +99,8 @@ class SyncMixin(object):
                         "created": iso_date.parse(f['createdDate']),
                         "modified": iso_date.parse(f['modifiedDate']),
                         "updated": datetime.utcnow(),
-                        "status": Status(f['status'])
+                        "status": Status(f['status']),
+                        "where_id": f["id"]
                     } for f in c if f['id'] in update])
 
             if len(update) < len(c):
@@ -126,7 +128,7 @@ class SyncMixin(object):
             update = [id[0] for id in self._session.query(Nodes.id).filter(Nodes.id.in_([f["id"] for f in c])).all()]
 
             if len(update) > 0:
-                self._engine.execute(Nodes.__table__.update().where(Nodes.id.in_(update)), [
+                self._engine.execute(Nodes.__table__.update().where(Nodes.id == bindparam("where_id")), [
                     {
                         "type": "file",
                         "name": f.get('name'),
@@ -134,7 +136,8 @@ class SyncMixin(object):
                         "created": iso_date.parse(f['createdDate']),
                         "modified": iso_date.parse(f['modifiedDate']),
                         "updated": datetime.utcnow(),
-                        "status": Status(f['status'])
+                        "status": Status(f['status']),
+                        "where_id": f["id"]
                     } for f in c if f['id'] in update])
 
             if len(update) < len(c):
